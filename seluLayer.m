@@ -6,7 +6,12 @@ classdef seluLayer < nnet.layer.Layer
     end
     
     methods
-        function layer = seluLayer()
+        function layer = seluLayer(name)
+            % Set layer name
+            if nargin == 1
+                layer.Name = name;
+            end
+            
             layer.Description = 'Scaled Exponential Linear Unit (SELU) Activation Function Layer';
         end        
 

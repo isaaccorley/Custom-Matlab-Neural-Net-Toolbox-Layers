@@ -1,7 +1,12 @@
 classdef softplusLayer < nnet.layer.Layer
 
     methods
-        function layer = softplusLayer()
+        function layer = softplusLayer(name)
+            % Set layer name
+            if nargin == 1
+                layer.Name = name;
+            end
+            
             layer.Description = 'Softplus Activation Function Layer';
         end
         

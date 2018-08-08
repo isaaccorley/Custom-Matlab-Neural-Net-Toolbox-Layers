@@ -6,10 +6,14 @@ classdef reshapeLayer < nnet.layer.Layer
     end
    
     methods
-        function layer = reshapeLayer(inputShape, outputShape)
+        function layer = reshapeLayer(inputShape, outputShape, name)
             % Layer constructor function goes here
             if nargin < 2
                 error('inputShape and outputShape must be defined.');
+            end
+            
+            if nargin > 2
+                layer.Name = name;
             end
             
             layer.inputShape = inputShape;
@@ -29,16 +33,10 @@ classdef reshapeLayer < nnet.layer.Layer
             
             % Reshape inputs to outputShape
             Z = reshape(X, [layer.outputShape, batchSize]);
-            %disp(size(X))
-            %disp(size(Z))
         end
 
         function dLdX = backward(~, X, ~, dLdZ, ~)
-           
-            % Reshape gradients to inputShape
-            disp(size(dLdZ))
             dLdX = reshape(dLdZ, size(X));
-            disp(size(dLdX))
         end
     end
 end

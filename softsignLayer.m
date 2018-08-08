@@ -1,7 +1,12 @@
 classdef softsignLayer < nnet.layer.Layer
 
     methods
-        function layer = softsignLayer()
+        function layer = softsignLayer(name)
+            % Set layer name
+            if nargin == 1
+                layer.Name = name;
+            end
+            
             layer.Description = 'Softsign Activation Function Layer';
         end
         

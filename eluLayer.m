@@ -1,14 +1,17 @@
 classdef eluLayer < nnet.layer.Layer
 
     properties
-        alpha = 1.0;
+        alpha
     end
     
     methods
-        function layer = eluLayer(alpha)
-            if nargin == 1
-                layer.alpha = alpha;
+        function layer = eluLayer(alpha, name)
+            % Set layer name
+            if nargin > 1
+                layer.Name = name;
             end
+            
+            layer.alpha = alpha;
             
             layer.Description = 'Exponential Linear Unit (ELU) Activation Function Layer';
         end        
