@@ -5,11 +5,11 @@ classdef sigmoidLayer < nnet.layer.Layer
             layer.Description = 'Sigmoid Activation Function Layer';
         end
         
-        function Z = predict(~, X)
+        function Z = predict(layer, X)
             Z = 1 ./ (1 + exp(-X));
         end
 
-        function dLdX = backward(~, ~, Z, dLdZ, ~)
+        function dLdX = backward(layer, X, Z, dLdZ, ~)
             dLdX = dLdZ .* (Z .* (1 - Z));
         end
     end

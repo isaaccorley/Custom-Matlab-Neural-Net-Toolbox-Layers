@@ -5,12 +5,16 @@ classdef eluLayer < nnet.layer.Layer
     end
     
     methods
-        function layer = eluLayer()
+        function layer = eluLayer(alpha)
+            if nargin == 1
+                layer.alpha = alpha;
+            end
+            
             layer.Description = 'Exponential Linear Unit (ELU) Activation Function Layer';
         end        
 
         function Z = predict(layer,X)
-            Z = (X .* (X > 0)) + (layer.alpha.*(exp(min(X,0)) - 1) .* (X <= 0));
+            Z = (X .* (X > 0)) + (layer.alpha .* (exp(min(X,0)) - 1) .* (X <= 0));
         end
 
         function [dLdX] = backward(layer, X, Z, dLdZ, ~)
