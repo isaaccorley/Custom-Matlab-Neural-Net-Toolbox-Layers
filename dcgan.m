@@ -3,11 +3,11 @@ clearvars; clc;
 imgShape = [28, 28, 1];
 latentDim = 100;
 
-imgs = readMNIST();
-numImgs = size(imgs, 4);
+trainFile = 'train-images.idx3-ubyte';
+testFile = 't10k-images.idx3-ubyte';
 
-% Normalize images to [0, 1]
-imgs = imgs ./ 255;
+imgs = cat(4, loadMNISTImages(trainFile), loadMNISTImages(testFile));
+numImgs = size(imgs, 4);
 
 %% G and D architectures
 gModel = [ ...
@@ -25,7 +25,7 @@ gModel = [ ...
         leakyReluLayer('name', 'g_lrelu_3')
         batchNormalizationLayer('name', 'g_bnorm_3')
         convolution2dLayer(5, 1, 'Padding', 'same', 'name', 'g_conv_3')
-        %sigmoidLayer('g_sigmoid_1')
+        sigmoidLayer('g_sigmoid_1')
         regressionLayer('name', 'g_out')];
 
 dModel = [
@@ -74,7 +74,7 @@ gModel = trainNetwork(noise, realImgs, gModel, options);
 
 %% Train
 batchSize = 128;
-iters = 1000;
+iters = 10000;
 
 realLabel = ones(batchSize, 1);
 fakeLabel = zeros(batchSize, 1);
@@ -119,9 +119,9 @@ for iter = 1:iters
     % Print loss to progressbar
     gLoss = gLoss.TrainingLoss;
     dLoss = (dLossReal.TrainingLoss + dLossFake.TrainingLoss) / 2;
-    waitbar(iter/iters, f, sprintf('Iter: %d; G Loss: %.4f; D Loss: %.4f', iter, gLoss, dLoss));    
+    waitbar(iter/iters, f, sprintf('Iter: %d; G Loss: %.4f; D Loss: %.4f', iter, gLoss, dLoss));
     
-    if mod(iter, 50) == 0
+    if mod(iter, 100) == 0
         plotImages(gModel, iter, latentDim)
     end
     
@@ -169,7 +169,7 @@ function model = updateWeights(modelToUpdate, updatedModel)
                 model.Layers(i).WeightL2Factor = 0;
                 model.Layers(i).BiasLearnRateFactor = 0;
                 model.Layers(i).BiasL2Factor = 0;
-            end        
+            end
         end
     end
     
@@ -177,13 +177,31 @@ function model = updateWeights(modelToUpdate, updatedModel)
 end
 
 
-function imgs = readMNIST()
-    % Read MNIST files from Kaggle (skip headers)
-    trainImages = csvread('train.csv', 1, 1); % don't read labels column
-    testImages = csvread('test.csv', 1, 0);
-    imgs = [trainImages; testImages];
-    imgs = permute(imgs, [2, 1]);
-    imgs = reshape(imgs, 28, 28, 1, []);
+function images = loadMNISTImages(filename)
+%loadMNISTImages returns a 28x28x[number of MNIST images] matrix containing
+%the raw MNIST images
+
+    fp = fopen(filename, 'rb');
+    assert(fp ~= -1, ['Could not open ', filename, '']);
+
+    magic = fread(fp, 1, 'int32', 0, 'ieee-be');
+    assert(magic == 2051, ['Bad magic number in ', filename, '']);
+
+    numImages = fread(fp, 1, 'int32', 0, 'ieee-be');
+    numRows = fread(fp, 1, 'int32', 0, 'ieee-be');
+    numCols = fread(fp, 1, 'int32', 0, 'ieee-be');
+
+    images = fread(fp, inf, 'unsigned char');
+    images = reshape(images, numCols, numRows, numImages);
+    images = permute(images,[2 1 3]);
+
+    fclose(fp);
+
+    images = reshape(images, numRows, numCols, 1, numImages);
+    
+    % Convert to double and rescale to [0,1]
+    images = double(images) / 255;
+
 end
 
 
