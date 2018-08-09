@@ -14,55 +14,47 @@ gModel = layerGraph(createG(latentDim));
 dModel = layerGraph(createD(imgShape));
 
 % Freeze D layers before combining with G
-layers = removeLayers(dModel, 'd_input');
-layers = makeNotTrainable(layers);
+dLayers = removeLayers(dModel, 'd_input');
+dLayers = makeNotTrainable(dLayers);
 
-% Create full generator model
-combinedModel = addLayers(layers, gModel.Layers);
-combinedModel = connectLayers(combinedModel, 'g_out', 'd_conv_1');
-
-%% Get layer names (makes for easier updating)
-dLayers = {};
-
-for i = 2:numel(dModel.Layers) % skip the input layer
-    dLayers{i-1} = dModel.Layers(i).Name;
-end
-
-clear layers
-
-%%
-
-
+% Create combined model to update G using D
+gLayers = removeLayers(gModel, 'g_out');
+combinedModel = addLayers(dLayers, gLayers.Layers);
+combinedModel = connectLayers(combinedModel, 'g_conv_1', 'd_conv_1');
 
 %% Train ops
-batchSize = 32;
-iters = 1000;
+batchSize = 2;
 
-realLabel = categorical(ones(1, 1));
-fakeLabel = categorical(zeros(1, 1));
-gOutMask = zeros(28, 28, 1, 1);
+realLabel = categorical(ones(batchSize, 1));
+noise = randn(latentDim, 1, 1, batchSize); 
+realImgs = imgs(:, :, :, randi([0, numImgs], batchSize, 1));
+gOutMask = zeros(28, 28, 1, batchSize);
+
 options = trainingOptions(...
     'adam', ...
     'InitialLearnRate', 1E-100, ...
     'MaxEpochs', 1, ...
-    'MiniBatchSize', 1, ...
+    'MiniBatchSize', batchSize, ...
     'Shuffle', 'never');
-
-%% Update D, G, and combined once to initialize weights and create DAGNetwork objects
-% latent vector
-noise = randn(latentDim, 1, 1, batchSize); 
-
-% random sample of images
-realImgs = imgs(:, :, :, randi([0, numImgs], batchSize, 1));
 
 dModel = trainNetwork(realImgs, realLabel, dModel, options);
 combinedModel = trainNetwork(noise, realLabel, combinedModel, options);
-
-%% Create gModel to output images
-gModel = removeLayers(combinedModel, dLayers);
-
+gModel = trainNetwork(noise, gOutMask, gModel, options);
 
 %% Train
+batchSize = 32;
+iters = 1000;
+
+realLabel = categorical(ones(batchSize, 1));
+fakeLabel = categorical(zeros(batchSize, 1));
+
+options = trainingOptions(...
+    'adam', ...
+    'InitialLearnRate', 1E-4, ...
+    'MaxEpochs', 1, ...
+    'MiniBatchSize', batchSize, ...
+    'Shuffle', 'never');
+
 for i = 1:iters
     
     % sample images at uniform randomly
@@ -81,47 +73,38 @@ for i = 1:iters
     dModel = trainNetwork(fakeImgs, fakeLabel, dModel, options);
 
     % Update D weights in G
-    gModel = update_D_weights(dModel, gModel);
+    gModel = updateWeights(gModel, dModel);
     
     % Update G on 
     gUpdate = trainNetwork(noise, realLabel, combinedModel, options);
     
     % Update G weights
-    gModel = update_G_weights(combinedModel, gModel);
+    gModel = updateWeights(gModel, combinedModel);
+    
+    if mod(iter, 100) == 0
+        plotImages(gModel, iter)
+    end
     
 end
 
 %% Functions
-function gModel = update_G_weights(combinedModel, gModel)
-    model = gModel.saveobj;
-
-    % Search through layers in G
-    for i = 1:numel(model.Layers)
-
-        % Skip if layer has no learnable parameters
-        if ~isprop(model.Layers(i), 'Weights')
-            continue
-        end
-
-        % Search for the equivalent layer in combined
-        for j = 1:numel(combinedModel.Layers)
-
-            % Once found link the layer weights and biases
-            % skip layers with no learnable parameters
-            if model.Layers(i).Name == combinedModel.Layers(j).Name
-                model.Layers(i).Weights = combinedModel.Layers(j).Weights;
-                model.Layers(i).Bias = combinedModel.Layers(j).Bias;
-            end        
-        end
-    end
+function plotImages(model, iter)
+    noise = randn(latentDim, 1, 1, 4);
+    y_pred = predict(model, noise);
     
-    gModel = gModel.loadobj(model);
+    for i = 1:size(y_pred, 4)
+        subplot(4,5,i);
+        imshow(squeeze(y_pred(:, :, :, i)));
+        title(num2str(iter));
+    end
+
 end
 
-function combinedModel = update_D_weights(dModel, combinedModel)
-    model = combinedModel.saveobj;
-    
-    % Search through layers in G
+
+function model = updateWeights(modelToUpdate, updatedModel)
+    model = modelToUpdate.saveobj;
+
+    % Search through layers
     for i = 1:numel(model.Layers)
 
         % Skip if layer has no learnable parameters
@@ -129,19 +112,19 @@ function combinedModel = update_D_weights(dModel, combinedModel)
             continue
         end
 
-        % Search for the equivalent layer in D
-        for j = 1:numel(model.Layers)
+        % Search for the equivalent layer in updated model
+        for j = 1:numel(updatedModel.Layers)
 
             % Once found link the layer weights and biases
             % skip layers with no learnable parameters
-            if model.Layers(i).Name == dModel.Layers(j).Name
-                model.Layers(i).Weights = dModel.Layers(j).Weights;
-                model.Layers(i).Bias = dModel.Layers(j).Bias;
+            if model.Layers(i).Name == updatedModel.Layers(j).Name
+                model.Layers(i).Weights = updatedModel.Layers(j).Weights;
+                model.Layers(i).Bias = updatedModel.Layers(j).Bias;
             end        
         end
     end
     
-    combinedModel = combinedModel.loadobj(model);
+    model = modelToUpdate.loadobj(model);
 end
 
 
@@ -177,11 +160,14 @@ function layers = createG(latentDim)
         fullyConnectedLayer(128*7*7, 'name', 'g_fc_1')
         reluLayer('name', 'g_relu_1')
         reshapeLayer(128*7*7, [7, 7, 128], 'g_reshape_1')
-        transposedConv2dLayer([5 5], 512, 'name', 'g_tconv_1')
+        upsampling2dLayer([2, 2], 'g_upsample_1')
+        convolution2dLayer([5 5], 128, 'Padding', 'same', 'name', 'g_conv_1')
         reluLayer('name', 'g_relu_2')
-        transposedConv2dLayer([5 5], 256, 'name', 'g_tconv_2')
+        upsampling2dLayer([2, 2], 'g_upsample_2')
+        convolution2dLayer([5 5], 64, 'Padding', 'same', 'name', 'g_conv_3')
         reluLayer('name', 'g_relu_3')
-        transposedConv2dLayer([5 5], 1, 'name', 'g_out')];
+        convolution2dLayer([5 5], 1, 'Padding', 'same', 'name', 'g_conv_3')
+        regressionLayer('name', 'g_out')];
     
 end
 
